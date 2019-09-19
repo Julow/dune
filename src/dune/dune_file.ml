@@ -446,6 +446,12 @@ module Preprocess_map = struct
 
   let default = Per_module.for_all Preprocess.No_preprocessing
 
+  let is_preprocessing t =
+    Per_module.fold t ~init:true ~f:(fun p acc ->
+        match p with
+        | Preprocess.No_preprocessing -> false
+        | _ -> acc)
+
   let pps t =
     Per_module.fold t ~init:Lib_name.Map.empty ~f:(fun pp acc ->
         List.fold_left (Preprocess.pps pp) ~init:acc ~f:(fun acc (loc, pp) ->
@@ -579,7 +585,7 @@ module Buildable = struct
     and+ preprocess =
       field "preprocess" Preprocess_map.decode ~default:Preprocess_map.default
     and+ preprocessor_deps =
-      field "preprocessor_deps" (repeat Dep_conf.decode) ~default:[]
+      located (field "preprocessor_deps" (repeat Dep_conf.decode) ~default:[])
     and+ lint = field "lint" Lint.decode ~default:Lint.default
     and+ c_flags = Dune_env.Stanza.c_flags ~since:since_c
     and+ c_names = field_o "c_names" (check_c Ordered_set_lang.decode)
@@ -594,6 +600,19 @@ module Buildable = struct
       field "js_of_ocaml" Js_of_ocaml.decode ~default:Js_of_ocaml.default
     and+ allow_overlapping_dependencies =
       field_b "allow_overlapping_dependencies"
+    in
+    let preprocessor_deps =
+      let loc, deps = preprocessor_deps in
+      if
+        (not (List.is_empty deps))
+        && not (Preprocess_map.is_preprocessing preprocess)
+      then
+        User_warning.emit ~loc
+          [ Pp.text
+              "This preprocessor_deps field will be ignored because no \
+               preprocessor is configured."
+          ];
+      deps
     in
     { loc
     ; preprocess
