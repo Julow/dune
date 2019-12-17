@@ -141,6 +141,62 @@ end = struct
   let odoc_input t = t
 end
 
+module Package : sig
+
+  val lookup : Super_context.t -> Package.Name.t -> Mld.t list
+
+end = struct
+
+  let check_mlds_no_dupes ~pkg ~mlds =
+    match
+      List.map mlds ~f:(fun mld ->
+        (Filename.chop_extension (Path.Build.basename mld), mld))
+      |> String.Map.of_list
+    with
+    | Ok m -> m
+    | Error (_, p1, p2) ->
+      User_error.raise
+        [ Pp.textf "Package %s has two mld's with the same basename %s, %s"
+            (Package.Name.to_string pkg)
+            (Path.to_string_maybe_quoted (Path.build p1))
+            (Path.to_string_maybe_quoted (Path.build p2))
+        ]
+
+  let mlds_of_dir sctx (w : _ Dir_with_dune.t) (doc : Documentation.t) =
+    let mlds = check_mlds_no_dupes ~pkg ~mlds in
+    pkg, mlds
+
+  let mlds_by_package_def =
+    let module Output = struct
+      type t = Mld.t Package.Name.Map.t
+
+      let to_dyn _ = Dyn.Opaque
+    end in
+    Memo.With_implicit_output.create "mlds by package"
+      ~implicit_output:Rules.implicit_output ~doc:"mlds by package"
+      ~input:(module Super_context.As_memo_key)
+      ~output:(module Output)
+      ~visibility:Hidden Sync
+      (fun sctx ->
+        let stanzas = Super_context.stanzas sctx in
+        stanzas
+        |> List.concat_map ~f:(fun (w : _ Dir_with_dune.t) ->
+               List.filter_map w.data ~f:(function
+                 | Documentation d ->
+                   let pkg = doc.package.name in
+                   let dc = Dir_contents.get sctx ~dir:w.ctx_dir in
+                   let mlds = Dir_contents.mlds dc doc in
+                   Some (pkg, mlds)
+                 | _ -> None))
+        |> Package.Name.Map.of_list_reduce ~f:List.rev_append)
+
+  let mlds_by_package = Memo.With_implicit_output.exec mlds_by_package_def
+
+  (* TODO memoize this so that we can cutoff at the package *)
+  let lookup sctx pkg = Package.Name.Map.find (mlds_by_package sctx) pkg
+
+end
+
 let odoc sctx =
   SC.resolve_program sctx
     ~dir:(Super_context.build_dir sctx)
@@ -374,29 +430,13 @@ let static_html ctx =
   let open Paths in
   [ css_file ctx; highlight_pack_js ctx; toplevel_index ctx ]
 
-let check_mlds_no_dupes ~pkg ~mlds =
-  match
-    List.map mlds ~f:(fun mld ->
-        (Filename.chop_extension (Path.Build.basename mld), mld))
-    |> String.Map.of_list
-  with
-  | Ok m -> m
-  | Error (_, p1, p2) ->
-    User_error.raise
-      [ Pp.textf "Package %s has two mld's with the same basename %s, %s"
-          (Package.Name.to_string pkg)
-          (Path.to_string_maybe_quoted (Path.build p1))
-          (Path.to_string_maybe_quoted (Path.build p2))
-      ]
-
 let odocs sctx target =
   let ctx = Super_context.context sctx in
   let dir = Paths.odocs ctx target in
   match target with
   | Pkg pkg ->
     let mlds =
-      let mlds = Packages.mlds sctx pkg in
-      let mlds = check_mlds_no_dupes ~pkg ~mlds in
+      let Packages.{ mlds } = Package.lookup sctx pkg in
       if String.Map.mem mlds "index" then
         mlds
       else
@@ -584,8 +624,7 @@ let setup_package_odoc_rules_def =
     ~input:(module Input)
     ~visibility:Hidden Sync
     (fun (sctx, pkg) ->
-      let mlds = Packages.mlds sctx pkg in
-      let mlds = check_mlds_no_dupes ~pkg ~mlds in
+      let Packages.{ mlds } = Package.lookup sctx pkg in
       let ctx = Super_context.context sctx in
       let mlds =
         if String.Map.mem mlds "index" then
