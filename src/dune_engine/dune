@@ -14,7 +14,7 @@
   xdg
   dune_re
   threads.posix
-  opam_file_format
+  dune_opam_file_format
   dune_lang
   dune_cache
   dune_cache_storage

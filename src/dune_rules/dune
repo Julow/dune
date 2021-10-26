@@ -9,7 +9,7 @@
   fiber
   memo
   dune_re
-  opam_file_format
+  dune_opam_file_format
   dune_lang
   dune_glob
   ocaml_config

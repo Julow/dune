@@ -1,8 +1,8 @@
 (library
- (name opam_file_format)
+ (name dune_opam_file_format)
  (public_name dune-private-libs.opam_file_format)
  (modules_without_implementation opamParserTypes)
- (wrapped false))
+ (wrapped true))
 
 (ocamllex opamLexer)
 (ocamlyacc opamBaseParser)

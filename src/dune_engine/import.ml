@@ -9,6 +9,8 @@ module Ml_kind = Dune_util.Ml_kind
 module Dune_rpc = Dune_rpc_private
 module Config = Dune_util.Config
 
+include Dune_opam_file_format
+
 module Path = struct
   include Path
 
