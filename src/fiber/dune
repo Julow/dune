@@ -1,4 +1,5 @@
 (library
  (name fiber)
+ (public_name dune-private-libs.fiber)
  (libraries stdune)
  (synopsis "Monadic concurrency library"))
